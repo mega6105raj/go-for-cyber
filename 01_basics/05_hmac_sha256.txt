@@ -1,0 +1,89 @@
+
+---------------------------------------------UNDERSTANDING THE CODE----------------------------------------------
+
+HMAC stands for Hash-based Message Authentication Code.
+
+It's a message authentication technique - not for encryption, but for authenticating and verifying data integrity using:
+	- A message m
+	- A secret key k
+	- A cryptographic hash function H (like SHA-256)
+
+  It computes:
+	HMAC(k,m) = H( XOR(k',opad) || H( XOR(k',ipad) || m ) )
+  where:
+	- k' is the key, padded/truncated to block size
+	- ipad is the inner pad (0x36 repeated)
+	- opad is the outer pad (0x5c repeated)
+	- || means concatenation
+	- H is a hash function (e.g., SHA-256)
+
+Before we implement HMAC, we should be aware of te following core concepts:
+
+	[1] Key Normalization
+		- Key is padded or truncated to match block size (64 bytes for SHA-256)
+
+	[2] Two Hashing Rounds
+		- First inner hash, then outer hash
+
+	[3] Security Guarantee
+		- As secure as the hash function itself (e.g. SHA-256 -> 256-bit MAC)
+
+	[4] Key Secrecy
+		- Only parties with access to the key can generate/verify MAC
+
+	[5] Resistance
+		- Prevents tampering, replay and length extension attacks
+
+
+Go's Built-in library: crypto/hmac
+
+	hmac.New(hash func() hash.Hash, key []byte)
+
+this creates an hmac.Hash object
+
+Internally
+	1. Key is padded or truncated to the hash's block size (64 bytes for SHA-256)
+	2. It prepares:
+		- XOR(k', ipad) -> inner padded key
+		- XOR(k', opad) -> outer padded key
+	3. When you .Write(m), it appends m to the XOR(k', ipad)
+	4. When you .Sum(nil), it performs the full HMAC calculation:
+
+	outer_hash := H( XOR(k', opad) || H( XOR(k', ipad) || m ))
+
+
+-----------------------------------------------------------------------------------------------------------------
+ Let's understand the code in depth :
+
+HMAC construction step:
+	
+			h := hmac.New(sha256.New, []byte(key))
+
+  This line does several things internally:
+	1. Converts the key string to a byte slice
+	2. If key>64 bytes, it hashes it.
+	3. If key<64 bytes, it pads it with zeros (0x00) to 64 bytes
+	4. Internally constructs:
+		- ipad = key XOR 0x36
+		- opad = key XOR 0x5c
+		- Prepares internal sha256 context for inner hash.
+	h is now an object with the inner hash state already printed as:
+		sha256(key XOR ipda || ???)
+
+  Message feed
+
+			h.Write([]byte(message))
+
+	This appends the user's message to the inner hash: sha256(key XOR ipad || message)
+The result of this Write is not immediately available - it only feeds into th inner hash.
+
+  Final HMAC Computation
+
+			hmacValue := h.Sum(nil)
+
+        This performs:
+		H( (key XOR opad) || sha256((key XOR ipad) || message) )
+   Sum(nil) returns a []byte - the 256-bit (32-byte) HMAC output
+
+-> Fianlly we are converting the raw 32-byte hash to a 64-character readable hex string, as seen in terminal output.
+
